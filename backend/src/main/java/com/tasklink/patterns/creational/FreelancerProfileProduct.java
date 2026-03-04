@@ -2,12 +2,13 @@ package com.tasklink.patterns.creational;
 
 import com.tasklink.model.FreelancerProfile;
 import com.tasklink.model.UserAccount;
+import com.tasklink.model.UserProfile;
 
 import java.util.ArrayList;
 
 public class FreelancerProfileProduct implements AccountProductB {
     @Override
-    public FreelancerProfile toFreelancerProfile(UserAccount user) {
+    public UserProfile toProfile(UserAccount user) {
         return FreelancerProfile.builder()
                 .user(user)
                 .about("")

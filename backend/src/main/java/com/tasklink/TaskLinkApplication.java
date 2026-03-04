@@ -9,3 +9,4 @@ public class TaskLinkApplication {
         SpringApplication.run(TaskLinkApplication.class, args);
     }
 }
+

@@ -1,8 +1,8 @@
 package com.tasklink.patterns.creational;
 
-import com.tasklink.model.FreelancerProfile;
 import com.tasklink.model.UserAccount;
+import com.tasklink.model.UserProfile;
 
 public interface AccountProductB {
-    FreelancerProfile toFreelancerProfile(UserAccount user);
+    UserProfile toProfile(UserAccount user);
 }

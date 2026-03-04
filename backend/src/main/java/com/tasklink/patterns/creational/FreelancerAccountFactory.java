@@ -2,8 +2,8 @@ package com.tasklink.patterns.creational;
 
 public class FreelancerAccountFactory implements ProfileAbstractFactory {
     @Override
-    public AccountProductA createProductA(String email, String passwordHash) {
-        return new FreelancerAccountProduct(email, passwordHash);
+    public AccountProductA createProductA() {
+        return new FreelancerAccountProduct();
     }
 
     @Override

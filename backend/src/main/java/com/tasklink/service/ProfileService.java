@@ -68,7 +68,7 @@ public class ProfileService {
                 throw new IllegalArgumentException("Profile is available only for freelancers");
             }
             ProfileAbstractFactory factory = profileFactoryProvider.getFactory(Role.FREELANCER);
-            return profileRepo.save(factory.createProductB().toFreelancerProfile(user));
+            return profileRepo.save((FreelancerProfile) factory.createProductB().toProfile(user));
         });
     }
 }

@@ -135,3 +135,22 @@ fieldset { border: 1px solid #d4dced; border-radius: 10px; padding: .8rem; }
 .freelancer-card { border: 1px solid #e3e3e3; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
 .skill-empty { display:block; padding:8px; color:#777; }
 .tag { border: 1px solid #ccc; background: #f7f7f7; margin-right: 6px; }
+
+.stripe-demo-modal { width: min(420px, 100%); }
+.stripe-demo-form { display: grid; gap: .5rem; }
+.stripe-demo-form h4 { margin: .3rem 0 0; font-size: .95rem; color: #333f56; }
+.stripe-inline-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .6rem;
+}
+.stripe-checkbox { margin: .2rem 0; color: #4d5a74; font-size: .92rem; }
+.stripe-demo-hint {
+  margin: 0;
+  padding: .45rem .6rem;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #334a99;
+  font-size: .87rem;
+}
+.stripe-pay-btn { margin-top: .2rem; width: 100%; }

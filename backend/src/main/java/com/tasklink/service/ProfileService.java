@@ -6,6 +6,8 @@ import com.tasklink.model.Role;
 import com.tasklink.model.Skill;
 import com.tasklink.model.UserAccount;
 import com.tasklink.patterns.creational.*;
+import com.tasklink.patterns.structural.PortfolioProxy;
+import com.tasklink.patterns.structural.PortfolioView;
 import com.tasklink.patterns.structural.SkillComposite;
 import com.tasklink.patterns.structural.SkillLeaf;
 import com.tasklink.repository.FreelancerProfileRepository;
@@ -35,10 +37,12 @@ public class ProfileService {
 
         SkillComposite root = new SkillComposite("root");
         skills.stream().map(s -> new SkillLeaf(s.getName())).forEach(root::add);
+        List<String> normalizedSkillNames = root.flatten().stream().map(String::toLowerCase).distinct().toList();
+        List<Skill> normalizedSkills = skillRepo.findByNameLowerIn(normalizedSkillNames);
 
         ProfileBuilder builder = new FreelancerProfileBuilder(profile);
         FreelancerProfileDirector director = new FreelancerProfileDirector();
-        director.construct(builder, request, skills);
+        director.construct(builder, request, normalizedSkills);
 
         profileRepo.save(builder.getResult());
         return getByUserIdWithSkills(request.userId());
@@ -52,9 +56,9 @@ public class ProfileService {
         return profileRepo.findWithSkillsByUserId(userId).orElseGet(() -> getOrCreateFreelancerProfile(userId));
     }
 
-
     public List<String> lazyPortfolio(Long userId) {
-        return List.copyOf(profileRepo.findPortfolioLinksByUserId(userId));
+        PortfolioView portfolioView = new PortfolioProxy(() -> profileRepo.findPortfolioLinksByUserId(userId));
+        return List.copyOf(portfolioView.getLinks());
     }
 
     public List<String> reviews(Long userId) {

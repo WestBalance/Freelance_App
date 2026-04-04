@@ -93,7 +93,11 @@ public class OrderController {
     @PostMapping("/{orderId}/accept/{proposalId}")
     public OrderDto accept(@PathVariable Long orderId, @PathVariable Long proposalId, Authentication authentication) {
         UserAccount user = userRepository.findByEmail(authentication.getName()).orElseThrow();
-        proposalService.accept(orderId, proposalId, user.getId());
+        if (!orderService.get(orderId).getClient().getId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only order owner can accept proposal");
+        }
+        OrderCommand cmd = new AcceptProposalCommand(proposalService);
+        cmd.execute(orderId, proposalId);
         return Mapper.toDto(orderService.get(orderId));
     }
 

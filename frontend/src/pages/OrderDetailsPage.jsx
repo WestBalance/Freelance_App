@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getOrderById } from '../services/orderService'
-import { createProposal, getProposalsByOrder } from '../services/proposalService'
+import { completeOrder, getOrderById } from '../services/orderService'
+import { acceptProposal, createProposal, getProposalsByOrder } from '../services/proposalService'
+import { createCheckoutSession } from '../services/paymentService'
 
 export default function OrderDetailsPage({ user }) {
   const { id } = useParams()
@@ -10,6 +11,7 @@ export default function OrderDetailsPage({ user }) {
   const [price, setPrice] = useState('')
   const [message, setMessage] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
+  const [paymentLoading, setPaymentLoading] = useState(false)
 
   const load = async () => {
     const [orderData, proposalData] = await Promise.all([getOrderById(id), getProposalsByOrder(id)])
@@ -44,6 +46,41 @@ export default function OrderDetailsPage({ user }) {
     }
   }
 
+  const onAccept = async proposalId => {
+    try {
+      await acceptProposal(order.id, proposalId)
+      setStatusMessage('Freelancer selected successfully.')
+      await load()
+    } catch (error) {
+      setStatusMessage(`Failed to accept proposal: ${error?.message ?? 'unknown error'}`)
+    }
+  }
+
+  const onPay = async () => {
+    setPaymentLoading(true)
+    try {
+      const successUrl = `${window.location.origin}/orders/${order.id}?payment=success`
+      const cancelUrl = `${window.location.origin}/orders/${order.id}?payment=cancelled`
+      const checkout = await createCheckoutSession(order.id, successUrl, cancelUrl)
+      if (!checkout?.url) throw new Error('Stripe checkout url is missing')
+      window.location.href = checkout.url
+    } catch (error) {
+      setStatusMessage(`Payment failed: ${error?.message ?? 'unknown error'}`)
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
+
+  const onComplete = async () => {
+    try {
+      await completeOrder(order.id)
+      setStatusMessage('Order completed.')
+      await load()
+    } catch (error) {
+      setStatusMessage(`Complete failed: ${error?.message ?? 'unknown error'}`)
+    }
+  }
+
   return (
     <section className="panel page-stack">
       <div>
@@ -62,7 +99,6 @@ export default function OrderDetailsPage({ user }) {
           <label>Your price<input type="number" min="1" required value={price} onChange={e => setPrice(e.target.value)} /></label>
           <label>Message<textarea required value={message} onChange={e => setMessage(e.target.value)} /></label>
           <button className="primary-btn" type="submit">Send proposal</button>
-          {statusMessage && <p>{statusMessage}</p>}
         </form>
       )}
 
@@ -77,10 +113,26 @@ export default function OrderDetailsPage({ user }) {
               <p>Status: {proposal.status}</p>
               <p>{proposal.message}</p>
               <p>Skills: {(proposal.abilities || []).join(', ') || '—'}</p>
+              {order.status === 'OPEN' && proposal.status === 'PENDING' && (
+                <button className="primary-btn" onClick={() => onAccept(proposal.id)}>
+                  Choose freelancer
+                </button>
+              )}
             </article>
           ))}
+
+          {order.status === 'IN_PROGRESS' && (
+            <div className="actions-row">
+              <button className="primary-btn" onClick={onPay} disabled={paymentLoading}>
+                {paymentLoading ? 'Redirecting to Stripe...' : 'Pay with Stripe Checkout'}
+              </button>
+              <button className="ghost-btn" onClick={onComplete}>Mark completed</button>
+            </div>
+          )}
         </section>
       )}
+
+      {statusMessage && <p>{statusMessage}</p>}
     </section>
   )
 }

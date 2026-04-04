@@ -5,6 +5,7 @@ import com.tasklink.dto.ClientProfileDto;
 import com.tasklink.dto.OrderDto;
 import com.tasklink.dto.ProposalDto;
 import com.tasklink.model.OrderStatus;
+import com.tasklink.model.Proposal;
 import com.tasklink.model.TaskOrder;
 import com.tasklink.repository.ProposalRepository;
 import org.springframework.stereotype.Service;
@@ -26,9 +27,9 @@ public class ClientProfileService {
     public ClientProfileDto get(Long clientId) {
         List<TaskOrder> orders = orderService.listByClient(clientId);
         List<Long> orderIds = orders.stream().map(TaskOrder::getId).toList();
-        Map<Long, List<ProposalDto>> proposalsByOrder = proposalRepository.findByOrderIdIn(orderIds).stream()
-                .map(Mapper::toDto)
-                .collect(Collectors.groupingBy(ProposalDto::orderId));
+        Map<Long, List<ProposalDto>> proposalsByOrder = orderIds.isEmpty()
+                ? Map.of()
+                : mapProposalsByOrder(orderIds);
 
         List<ClientOrderWithProposalsDto> open = mapByStatuses(orders, List.of(OrderStatus.OPEN, OrderStatus.DRAFT, OrderStatus.PUBLISHED), proposalsByOrder);
         List<ClientOrderWithProposalsDto> inProgress = mapByStatuses(orders, List.of(OrderStatus.IN_PROGRESS), proposalsByOrder);
@@ -45,5 +46,39 @@ public class ClientProfileService {
                     return new ClientOrderWithProposalsDto(orderDto, proposals);
                 })
                 .toList();
+    }
+
+    private Map<Long, List<ProposalDto>> mapProposalsByOrder(List<Long> orderIds) {
+        List<Proposal> proposals = proposalRepository.findByOrderIdIn(orderIds);
+        List<Long> proposalIds = proposals.stream().map(Proposal::getId).toList();
+
+        Map<Long, List<String>> attachmentsByProposalId = proposalIds.isEmpty()
+                ? Map.of()
+                : proposalRepository.findAttachmentRowsByProposalIds(proposalIds).stream()
+                .collect(Collectors.groupingBy(
+                        row -> (Long) row[0],
+                        Collectors.mapping(row -> (String) row[1], Collectors.toList())
+                ));
+
+        Map<Long, List<String>> abilitiesByProposalId = proposalIds.isEmpty()
+                ? Map.of()
+                : proposalRepository.findAbilityRowsByProposalIds(proposalIds).stream()
+                .collect(Collectors.groupingBy(
+                        row -> (Long) row[0],
+                        Collectors.mapping(row -> (String) row[1], Collectors.toList())
+                ));
+
+        return proposals.stream()
+                .map(proposal -> new ProposalDto(
+                        proposal.getId(),
+                        proposal.getOrder().getId(),
+                        proposal.getFreelancer().getId(),
+                        proposal.getPrice(),
+                        proposal.getMessage(),
+                        proposal.getStatus(),
+                        attachmentsByProposalId.getOrDefault(proposal.getId(), List.of()),
+                        abilitiesByProposalId.getOrDefault(proposal.getId(), List.of())
+                ))
+                .collect(Collectors.groupingBy(ProposalDto::orderId));
     }
 }

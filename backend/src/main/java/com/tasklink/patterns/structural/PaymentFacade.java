@@ -1,14 +1,25 @@
 package com.tasklink.patterns.structural;
 
+import com.tasklink.model.TaskOrder;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 
 @Component
 public class PaymentFacade {
-    private final PaymentGateway gateway = new StripeAdapter();
+    private final PaymentValidationSubsystem validationSubsystem;
+    private final PaymentReceiptSubsystem receiptSubsystem;
+    private final PaymentTransactionSubsystem transactionSubsystem;
 
-    public String pay(BigDecimal amount, String currency, String description) {
-        return gateway.charge(amount, currency, description);
+    public PaymentFacade(PaymentGateway gateway) {
+        this.validationSubsystem = new PaymentValidationSubsystem();
+        this.receiptSubsystem = new PaymentReceiptSubsystem();
+        this.transactionSubsystem = new PaymentTransactionSubsystem(gateway);
+    }
+
+    public String pay(TaskOrder order, Long payerId, BigDecimal amount) {
+        validationSubsystem.validatePayable(order, payerId);
+        String description = receiptSubsystem.buildDescription(order);
+        return transactionSubsystem.performCharge(amount, order.getCurrency(), description);
     }
 }

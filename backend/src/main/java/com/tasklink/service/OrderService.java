@@ -3,13 +3,7 @@ package com.tasklink.service;
 import com.tasklink.dto.CreateOrderRequest;
 import com.tasklink.dto.OrderCloneDraftDto;
 import com.tasklink.model.*;
-import com.tasklink.patterns.behavioral.ClosedState;
-import com.tasklink.patterns.behavioral.DraftState;
-import com.tasklink.patterns.behavioral.InProgressState;
-import com.tasklink.patterns.behavioral.OrderState;
-import com.tasklink.patterns.behavioral.PricingStrategy;
-import com.tasklink.patterns.behavioral.FixedPricingStrategy;
-import com.tasklink.patterns.behavioral.HourlyPricingStrategy;
+import com.tasklink.patterns.behavioral.*;
 import com.tasklink.patterns.creational.*;
 import com.tasklink.patterns.creational.singleton.PlatformRuntimeManager;
 import com.tasklink.patterns.structural.*;
@@ -17,6 +11,7 @@ import com.tasklink.repository.TaskOrderRepository;
 import com.tasklink.repository.UserAccountRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -24,30 +19,36 @@ public class OrderService {
     private final TaskOrderRepository orderRepo;
     private final UserAccountRepository userRepo;
     private final PlatformRuntimeManager runtimeManager = PlatformRuntimeManager.getInstance();
+    private final OrderSubject orderSubject = new OrderSubject();
 
     public OrderService(TaskOrderRepository orderRepo, UserAccountRepository userRepo) {
         this.orderRepo = orderRepo;
         this.userRepo = userRepo;
+        orderSubject.attach(new RuntimeOrderObserver(runtimeManager));
+        orderSubject.attach(new OrderAuditObserver());
     }
 
     public TaskOrder create(CreateOrderRequest request) {
+        buildValidationChain().validate(request);
+
         UserAccount client = userRepo.findById(request.clientId()).orElseThrow();
         OrderFactoryMethod creator = OrderCreatorResolver.resolve(request.category());
         TaskOrder order = creator.anOperation(request, client);
 
-        OrderCostComponent decorated = new BaseOrderCost(order.getBudget());
-        if (request.urgent()) decorated = new UrgentOrderDecorator(decorated);
-        if (request.featured()) decorated = new FeaturedOrderDecorator(decorated);
-        order.setBudget(decorated.budget());
-        order.setPriorityScore(order.getPriorityScore() + decorated.priorityBoost());
+        PromotionPolicyImplementor promotionPolicy = switch (request.category()) {
+            case DESIGN, MARKETING, VIDEO_PRODUCTION -> new CreativePromotionPolicy();
+            default -> new StandardPromotionPolicy();
+        };
 
-        PricingStrategy strategy = request.pricingMode() == PricingMode.HOURLY ? new HourlyPricingStrategy() : new FixedPricingStrategy();
-        order.setBudget(strategy.calculate(order));
+        OrderBudgetBridge budgetBridge = request.pricingMode() == PricingMode.HOURLY
+                ? new HourlyOrderBudgetBridge(promotionPolicy)
+                : new FixedOrderBudgetBridge(promotionPolicy);
+
+        order.setBudget(budgetBridge.calculate(order));
+        order.setPriorityScore(order.getPriorityScore() + budgetBridge.priorityBoost(order));
 
         TaskOrder saved = orderRepo.save(order);
-        if (saved.getStatus() == OrderStatus.OPEN || saved.getStatus() == OrderStatus.IN_PROGRESS) {
-            runtimeManager.markActive(saved.getId(), saved.getStatus());
-        }
+        emitOrderEvent(saved.getId(), "ORDER_CREATED", null, saved.getStatus());
         return saved;
     }
 
@@ -65,27 +66,21 @@ public class OrderService {
 
     public TaskOrder publish(Long id) {
         TaskOrder order = get(id);
-        OrderState state = switch (order.getStatus()) {
-            case OPEN, DRAFT, PUBLISHED -> new DraftState();
-            case IN_PROGRESS -> new InProgressState();
-            case COMPLETED, CLOSED -> new ClosedState();
-        };
+        OrderStatus previousStatus = order.getStatus();
+        OrderState state = mapState(order);
         order.setStatus(state.publish().status());
         TaskOrder saved = orderRepo.save(order);
-        updateActiveCache(saved);
+        emitOrderEvent(saved.getId(), "ORDER_PUBLISHED", previousStatus, saved.getStatus());
         return saved;
     }
 
     public TaskOrder close(Long id) {
         TaskOrder order = get(id);
-        OrderState state = switch (order.getStatus()) {
-            case OPEN, DRAFT, PUBLISHED -> new DraftState();
-            case IN_PROGRESS -> new InProgressState();
-            case COMPLETED, CLOSED -> new ClosedState();
-        };
+        OrderStatus previousStatus = order.getStatus();
+        OrderState state = mapState(order);
         order.setStatus(state.close().status());
         TaskOrder saved = orderRepo.save(order);
-        updateActiveCache(saved);
+        emitOrderEvent(saved.getId(), "ORDER_CLOSED", previousStatus, saved.getStatus());
         return saved;
     }
 
@@ -94,9 +89,10 @@ public class OrderService {
         if (!order.getClient().getId().equals(clientId)) {
             throw new IllegalArgumentException("Only order owner can complete order");
         }
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.COMPLETED);
         TaskOrder saved = orderRepo.save(order);
-        updateActiveCache(saved);
+        emitOrderEvent(saved.getId(), "ORDER_COMPLETED", previousStatus, saved.getStatus());
         return saved;
     }
 
@@ -106,22 +102,33 @@ public class OrderService {
 
     public TaskOrder startProgress(Long id) {
         TaskOrder order = get(id);
-        OrderState state = switch (order.getStatus()) {
-            case OPEN, DRAFT, PUBLISHED -> new DraftState();
-            case IN_PROGRESS -> new InProgressState();
-            case COMPLETED, CLOSED -> new ClosedState();
-        };
+        OrderStatus previousStatus = order.getStatus();
+        OrderState state = mapState(order);
         order.setStatus(state.start().status());
         TaskOrder saved = orderRepo.save(order);
-        updateActiveCache(saved);
+        emitOrderEvent(saved.getId(), "ORDER_STARTED", previousStatus, saved.getStatus());
         return saved;
     }
 
-    private void updateActiveCache(TaskOrder order) {
-        if (order.getStatus() == OrderStatus.OPEN || order.getStatus() == OrderStatus.IN_PROGRESS) {
-            runtimeManager.markActive(order.getId(), order.getStatus());
-        } else {
-            runtimeManager.markInactive(order.getId());
-        }
+    private ValidationHandler buildValidationChain() {
+        ValidationHandler title = new TitleValidationHandler();
+        ValidationHandler description = new DescriptionValidationHandler();
+        ValidationHandler budget = new BudgetValidationHandler();
+        ValidationHandler deadline = new DeadlineValidationHandler();
+        ValidationHandler client = new ClientValidationHandler();
+        title.setNext(description).setNext(budget).setNext(deadline).setNext(client);
+        return title;
+    }
+
+    private OrderState mapState(TaskOrder order) {
+        return switch (order.getStatus()) {
+            case OPEN, DRAFT, PUBLISHED -> new PublishedState();
+            case IN_PROGRESS -> new InProgressState();
+            case COMPLETED, CLOSED -> new ClosedState();
+        };
+    }
+
+    private void emitOrderEvent(Long orderId, String action, OrderStatus previousStatus, OrderStatus newStatus) {
+        orderSubject.notifyObservers(new OrderEvent(orderId, action, previousStatus, newStatus, Instant.now()));
     }
 }

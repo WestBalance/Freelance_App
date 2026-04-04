@@ -24,5 +24,6 @@ public interface ProposalRepository extends JpaRepository<Proposal, Long> {
     @Query("select p.id, ability from Proposal p join p.abilities ability where p.id in :proposalIds")
     List<Object[]> findAbilityRowsByProposalIds(@Param("proposalIds") List<Long> proposalIds);
 
+    @EntityGraph(attributePaths = {"order", "freelancer"})
     List<Proposal> findByOrderIdIn(List<Long> orderIds);
 }

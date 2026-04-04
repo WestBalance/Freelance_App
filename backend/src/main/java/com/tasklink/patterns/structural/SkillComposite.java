@@ -15,6 +15,16 @@ public class SkillComposite implements SkillNode {
     }
 
     @Override
+    public void remove(SkillNode node) {
+        children.remove(node);
+    }
+
+    @Override
+    public SkillNode getChild(int index) {
+        return children.get(index);
+    }
+
+    @Override
     public String name() { return name; }
 
     @Override

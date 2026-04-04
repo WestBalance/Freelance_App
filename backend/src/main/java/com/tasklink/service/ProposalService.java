@@ -2,7 +2,12 @@ package com.tasklink.service;
 
 import com.tasklink.dto.CreateProposalRequest;
 import com.tasklink.model.*;
+import com.tasklink.patterns.behavioral.OrderEvent;
+import com.tasklink.patterns.behavioral.OrderSubject;
+import com.tasklink.patterns.behavioral.RuntimeOrderObserver;
 import com.tasklink.patterns.creational.singleton.PlatformRuntimeManager;
+import com.tasklink.patterns.structural.SkillComposite;
+import com.tasklink.patterns.structural.SkillLeaf;
 import com.tasklink.repository.FreelancerProfileRepository;
 import com.tasklink.repository.ProposalRepository;
 import com.tasklink.repository.TaskOrderRepository;
@@ -12,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,12 +31,14 @@ public class ProposalService {
     private final UserAccountRepository userRepo;
     private final FreelancerProfileRepository profileRepo;
     private final PlatformRuntimeManager runtimeManager = PlatformRuntimeManager.getInstance();
+    private final OrderSubject orderSubject = new OrderSubject();
 
     public ProposalService(ProposalRepository proposalRepo, TaskOrderRepository orderRepo, UserAccountRepository userRepo, FreelancerProfileRepository profileRepo) {
         this.proposalRepo = proposalRepo;
         this.orderRepo = orderRepo;
         this.userRepo = userRepo;
         this.profileRepo = profileRepo;
+        orderSubject.attach(new RuntimeOrderObserver(runtimeManager));
     }
 
     public Proposal create(CreateProposalRequest request) {
@@ -42,6 +50,15 @@ public class ProposalService {
         UserAccount freelancer = userRepo.findById(request.freelancerId()).orElseThrow();
         FreelancerProfile profile = profileRepo.findWithSkillsByUserId(freelancer.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Freelancer profile not found"));
+
+        SkillComposite abilityTree = new SkillComposite("abilities");
+        profile.getSkills().stream()
+                .map(Skill::getName)
+                .distinct()
+                .sorted()
+                .map(SkillLeaf::new)
+                .forEach(abilityTree::add);
+
         Proposal p = Proposal.builder()
                 .order(order)
                 .freelancer(freelancer)
@@ -49,7 +66,7 @@ public class ProposalService {
                 .message(request.message())
                 .status(ProposalStatus.PENDING)
                 .attachments(request.attachments() == null ? List.of() : request.attachments())
-                .abilities(profile.getSkills().stream().map(Skill::getName).toList())
+                .abilities(abilityTree.flatten())
                 .build();
         Proposal saved = proposalRepo.save(p);
         Proposal detailed = proposalRepo.findWithOrderAndFreelancerById(saved.getId()).orElse(saved);
@@ -86,9 +103,10 @@ public class ProposalService {
         }
         proposalRepo.saveAll(orderProposals);
 
+        OrderStatus previous = order.getStatus();
         order.setStatus(OrderStatus.IN_PROGRESS);
         orderRepo.save(order);
-        runtimeManager.markActive(order.getId(), order.getStatus());
+        orderSubject.notifyObservers(new OrderEvent(order.getId(), "PROPOSAL_ACCEPTED", previous, order.getStatus(), Instant.now()));
     }
 
     private void hydrateCollections(List<Proposal> proposals) {

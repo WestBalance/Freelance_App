@@ -4,7 +4,7 @@ import com.tasklink.model.OrderStatus;
 
 public class PublishedState implements OrderState {
     @Override
-    public OrderStatus status() { return OrderStatus.OPEN; }
+    public OrderStatus status() { return OrderStatus.PUBLISHED; }
 
     @Override
     public OrderState publish() { return this; }

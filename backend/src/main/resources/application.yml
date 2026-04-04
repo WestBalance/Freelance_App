@@ -19,3 +19,8 @@ spring:
 logging:
   level:
     org.hibernate.SQL: info
+
+
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  api-base-url: ${STRIPE_API_BASE_URL:https://api.stripe.com/v1}

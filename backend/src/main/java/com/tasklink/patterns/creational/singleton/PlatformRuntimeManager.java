@@ -12,6 +12,7 @@ public class PlatformRuntimeManager {
 
     private final Map<Long, OrderStatus> activeOrders = new LinkedHashMap<>();
     private final List<String> transactions = new ArrayList<>();
+    private final Map<Long, String> paidOrders = new LinkedHashMap<>();
 
     private PlatformRuntimeManager() {
     }
@@ -31,7 +32,8 @@ public class PlatformRuntimeManager {
         return Map.of(
                 "activeCount", activeOrders.size(),
                 "activeOrders", new LinkedHashMap<>(activeOrders),
-                "transactions", new ArrayList<>(transactions)
+                "transactions", new ArrayList<>(transactions),
+                "paidOrders", new LinkedHashMap<>(paidOrders)
         );
     }
 
@@ -49,5 +51,13 @@ public class PlatformRuntimeManager {
 
     public int getActiveCount() {
         return activeOrders.size();
+    }
+
+    public void markPaid(Long orderId, String transactionId) {
+        paidOrders.put(orderId, transactionId);
+    }
+
+    public boolean isPaid(Long orderId) {
+        return paidOrders.containsKey(orderId);
     }
 }

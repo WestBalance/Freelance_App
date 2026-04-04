@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import SkillSelector from '../components/SkillSelector'
 import { getClientProfile, getFreelancerProfile, saveFreelancerProfile } from '../services/profileService'
 import { completeOrder } from '../services/orderService'
+import { createCheckoutSession } from '../services/paymentService'
 import { acceptProposal } from '../services/proposalService'
 import { getSkills } from '../services/skillService'
 
@@ -9,6 +10,10 @@ export default function ProfilePage({ user }) {
   const [skillOptions, setSkillOptions] = useState([])
   const [message, setMessage] = useState('')
   const [clientProfile, setClientProfile] = useState(null)
+  const [clientProfileLoading, setClientProfileLoading] = useState(false)
+  const [clientProfileError, setClientProfileError] = useState('')
+  const [paymentLoading, setPaymentLoading] = useState(false)
+  const [paymentError, setPaymentError] = useState('')
   const [form, setForm] = useState({
     userId: user?.id,
     about: '',
@@ -18,7 +23,18 @@ export default function ProfilePage({ user }) {
     rating: 0
   })
 
-  const loadClientProfile = () => getClientProfile(user.id).then(setClientProfile)
+  const loadClientProfile = async () => {
+    setClientProfileLoading(true)
+    setClientProfileError('')
+    try {
+      const data = await getClientProfile(user.id)
+      setClientProfile(data)
+    } catch (error) {
+      setClientProfileError(error?.message ?? 'Could not load client profile')
+    } finally {
+      setClientProfileLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!user) return
@@ -97,10 +113,29 @@ export default function ProfilePage({ user }) {
     await loadClientProfile()
   }
 
-  if (user.role === 'CLIENT') {
-    if (!clientProfile) return <p className="panel">Loading client profile...</p>
+  const handlePay = async order => {
+    if (!order?.id) return
+    setPaymentLoading(true)
+    setPaymentError('')
+    try {
+      const successUrl = `${window.location.origin}/profile?payment=success&orderId=${order.id}`
+      const cancelUrl = `${window.location.origin}/profile?payment=cancelled&orderId=${order.id}`
+      const checkout = await createCheckoutSession(order.id, successUrl, cancelUrl)
+      if (!checkout?.url) throw new Error('Stripe checkout url is missing')
+      window.location.href = checkout.url
+    } catch (error) {
+      setPaymentError(error?.message ?? 'Payment failed')
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
 
-    const renderOrderBlock = (title, orders, allowAccept = false, allowComplete = false) => (
+  if (user.role === 'CLIENT') {
+    if (clientProfileLoading) return <p className="panel">Loading client profile...</p>
+    if (clientProfileError) return <p className="panel error-text">{clientProfileError}</p>
+    if (!clientProfile) return <p className="panel">Client profile is empty.</p>
+
+    const renderOrderBlock = (title, orders, options = {}) => (
       <section className="panel">
         <h3>{title}</h3>
         {!orders.length && <p>No orders.</p>}
@@ -108,7 +143,16 @@ export default function ProfilePage({ user }) {
           <article key={item.order.id} className="client-order-block">
             <h4>{item.order.title} ({item.order.status})</h4>
             <p>{item.order.description}</p>
-            {allowComplete && <button className="primary-btn" onClick={() => handleComplete(item.order.id)}>Mark Completed</button>}
+            {options.allowComplete && <button className="primary-btn" onClick={() => handleComplete(item.order.id)}>Mark Completed</button>}
+            {options.allowPay && (
+              <button
+                className="secondary-btn"
+                onClick={() => handlePay(item.order)}
+                disabled={paymentLoading}
+              >
+                {paymentLoading ? 'Redirecting to Stripe...' : 'Pay with Stripe Checkout'}
+              </button>
+            )}
             <div className="proposal-list">
               <strong>Proposals:</strong>
               {!item.proposals.length && <p>No proposals yet.</p>}
@@ -116,7 +160,7 @@ export default function ProfilePage({ user }) {
                 <div key={proposal.id} className="proposal-item">
                   <span>Freelancer #{proposal.freelancerId} — ${proposal.price} — {proposal.status}</span>
                   <span> Skills: {(proposal.abilities || []).join(', ') || '—'}</span>
-                  {allowAccept && proposal.status === 'PENDING' && (
+                  {options.allowAccept && proposal.status === 'PENDING' && (
                     <button className="secondary-btn" onClick={() => handleAccept(item.order.id, proposal.id)}>Accept</button>
                   )}
                 </div>
@@ -130,9 +174,10 @@ export default function ProfilePage({ user }) {
     return (
       <div className="page-stack">
         <h2>Client Profile</h2>
-        {renderOrderBlock('Open orders', clientProfile.openOrders, true, false)}
-        {renderOrderBlock('Orders in progress', clientProfile.inProgressOrders, false, true)}
-        {renderOrderBlock('Completed orders', clientProfile.completedOrders, false, false)}
+        {paymentError && <p className="panel error-text">{paymentError}</p>}
+        {renderOrderBlock('Open orders', clientProfile.openOrders, { allowAccept: true })}
+        {renderOrderBlock('Orders in progress', clientProfile.inProgressOrders, { allowPay: true, allowComplete: true })}
+        {renderOrderBlock('Completed orders', clientProfile.completedOrders, {})}
       </div>
     )
   }

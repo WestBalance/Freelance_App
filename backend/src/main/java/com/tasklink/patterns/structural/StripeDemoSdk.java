@@ -30,6 +30,8 @@ public class StripeDemoSdk {
         form.add("currency", currency == null || currency.isBlank() ? "usd" : currency.toLowerCase());
         form.add("confirm", "true");
         form.add("automatic_payment_methods[enabled]", "true");
+        form.add("automatic_payment_methods[allow_redirects]", "never");
+        form.add("payment_method", "pm_card_visa");
         form.add("description", note);
 
         HttpHeaders headers = new HttpHeaders();

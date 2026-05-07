@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import SkillSelector from '../components/SkillSelector'
 import { getClientProfile, getFreelancerProfile, saveFreelancerProfile } from '../services/profileService'
-import { completeOrder } from '../services/orderService'
-import { createCheckoutSession } from '../services/paymentService'
+import { completeOrder, updateOrderBudget } from '../services/orderService'
+import { createCheckoutSession, payOrder } from '../services/paymentService'
 import { acceptProposal } from '../services/proposalService'
 import { getSkills } from '../services/skillService'
 
@@ -13,7 +14,10 @@ export default function ProfilePage({ user }) {
   const [clientProfileLoading, setClientProfileLoading] = useState(false)
   const [clientProfileError, setClientProfileError] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
+  const [directPaymentLoading, setDirectPaymentLoading] = useState(false)
   const [paymentError, setPaymentError] = useState('')
+  const [paymentSuccess, setPaymentSuccess] = useState('')
+  const [budgetSaveSuccess, setBudgetSaveSuccess] = useState({})
   const [form, setForm] = useState({
     userId: user?.id,
     about: '',
@@ -22,6 +26,7 @@ export default function ProfilePage({ user }) {
     reviews: [''],
     rating: 0
   })
+  const [budgetDrafts, setBudgetDrafts] = useState({})
 
   const loadClientProfile = async () => {
     setClientProfileLoading(true)
@@ -78,14 +83,6 @@ export default function ProfilePage({ user }) {
   const addPortfolioLink = () => setForm(prev => ({ ...prev, portfolioLinks: [...prev.portfolioLinks, ''] }))
 
 
-  const updateReview = (index, value) => {
-    const next = [...form.reviews]
-    next[index] = value
-    setForm(prev => ({ ...prev, reviews: next }))
-  }
-
-  const addReview = () => setForm(prev => ({ ...prev, reviews: [...prev.reviews, ''] }))
-
   const submit = async e => {
     e.preventDefault()
     try {
@@ -117,6 +114,7 @@ export default function ProfilePage({ user }) {
     if (!order?.id) return
     setPaymentLoading(true)
     setPaymentError('')
+    setPaymentSuccess('')
     try {
       const successUrl = `${window.location.origin}/profile?payment=success&orderId=${order.id}`
       const cancelUrl = `${window.location.origin}/profile?payment=cancelled&orderId=${order.id}`
@@ -127,6 +125,39 @@ export default function ProfilePage({ user }) {
       setPaymentError(error?.message ?? 'Payment failed')
     } finally {
       setPaymentLoading(false)
+    }
+  }
+
+  const handleDirectPay = async order => {
+    if (!order?.id) return
+    setDirectPaymentLoading(true)
+    setPaymentError('')
+    setPaymentSuccess('')
+    try {
+      await payOrder(order.id)
+      setPaymentSuccess(`Direct payment for order #${order.id} completed.`)
+      await loadClientProfile()
+    } catch (error) {
+      setPaymentError(error?.message ?? 'Direct payment failed')
+    } finally {
+      setDirectPaymentLoading(false)
+    }
+  }
+
+  const handleBudgetChange = (orderId, value) => {
+    setBudgetDrafts(prev => ({ ...prev, [orderId]: value }))
+  }
+
+  const handleBudgetSave = async order => {
+    try {
+      const nextBudget = Number(budgetDrafts[order.id] ?? order.budget)
+      await updateOrderBudget(order.id, nextBudget)
+      setBudgetSaveSuccess(prev => ({ ...prev, [order.id]: 'Price saved successfully.' }))
+      setPaymentSuccess(`Price for order #${order.id} updated.`)
+      await loadClientProfile()
+    } catch (error) {
+      setPaymentError(error?.message ?? 'Failed to save price')
+      setBudgetSaveSuccess(prev => ({ ...prev, [order.id]: '' }))
     }
   }
 
@@ -143,22 +174,43 @@ export default function ProfilePage({ user }) {
           <article key={item.order.id} className="client-order-block">
             <h4>{item.order.title} ({item.order.status})</h4>
             <p>{item.order.description}</p>
+            {options.allowPay && (
+              <div className="actions-row">
+                <input
+                  type="number"
+                  min="1"
+                  value={budgetDrafts[item.order.id] ?? item.order.budget}
+                  onChange={e => handleBudgetChange(item.order.id, e.target.value)}
+                />
+                <button className="secondary-btn" onClick={() => handleBudgetSave(item.order)}>Save price</button>
+                {budgetSaveSuccess[item.order.id] && <span className="success-text">{budgetSaveSuccess[item.order.id]}</span>}
+              </div>
+            )}
             {options.allowComplete && <button className="primary-btn" onClick={() => handleComplete(item.order.id)}>Mark Completed</button>}
             {options.allowPay && (
-              <button
-                className="secondary-btn"
-                onClick={() => handlePay(item.order)}
-                disabled={paymentLoading}
-              >
-                {paymentLoading ? 'Redirecting to Stripe...' : 'Pay with Stripe Checkout'}
-              </button>
+              <>
+                <button
+                  className="secondary-btn"
+                  onClick={() => handlePay(item.order)}
+                  disabled={paymentLoading}
+                >
+                  {paymentLoading ? 'Redirecting to Stripe...' : 'Pay with Stripe Checkout'}
+                </button>
+                <button
+                  className="secondary-btn"
+                  onClick={() => handleDirectPay(item.order)}
+                  disabled={directPaymentLoading}
+                >
+                  {directPaymentLoading ? 'Paying...' : 'Direct pay (demo)'}
+                </button>
+              </>
             )}
             <div className="proposal-list">
               <strong>Proposals:</strong>
               {!item.proposals.length && <p>No proposals yet.</p>}
               {item.proposals.map(proposal => (
                 <div key={proposal.id} className="proposal-item">
-                  <span>Freelancer #{proposal.freelancerId} — ${proposal.price} — {proposal.status}</span>
+                  <span><Link to={`/profiles/${proposal.freelancerId}`}>{proposal.freelancerName} ({proposal.freelancerEmail})</Link> — ${proposal.price} — {proposal.status}</span>
                   <span> Skills: {(proposal.abilities || []).join(', ') || '—'}</span>
                   {options.allowAccept && proposal.status === 'PENDING' && (
                     <button className="secondary-btn" onClick={() => handleAccept(item.order.id, proposal.id)}>Accept</button>
@@ -174,6 +226,7 @@ export default function ProfilePage({ user }) {
     return (
       <div className="page-stack">
         <h2>Client Profile</h2>
+        {paymentSuccess && <p className="panel success-text">{paymentSuccess}</p>}
         {paymentError && <p className="panel error-text">{paymentError}</p>}
         {renderOrderBlock('Open orders', clientProfile.openOrders, { allowAccept: true })}
         {renderOrderBlock('Orders in progress', clientProfile.inProgressOrders, { allowPay: true, allowComplete: true })}
@@ -185,6 +238,7 @@ export default function ProfilePage({ user }) {
   return (
     <form className="panel form" onSubmit={submit}>
       <h2>Freelancer Profile</h2>
+      <p><strong>Email:</strong> {user.email}</p>
       <label>About<textarea value={form.about} onChange={e => setForm(prev => ({ ...prev, about: e.target.value }))} /></label>
       <small>Short professional summary.</small>
 
@@ -200,10 +254,9 @@ export default function ProfilePage({ user }) {
       <small>Add all relevant portfolio URLs.</small>
 
       <label>Reviews</label>
-      {form.reviews.map((review, idx) => (
-        <input key={`r-${idx}`} value={review} onChange={e => updateReview(idx, e.target.value)} placeholder="Client feedback" />
+      {(form.reviews || []).filter(Boolean).map((review, idx) => (
+        <input key={`r-${idx}`} value={review} readOnly />
       ))}
-      <button type="button" className="secondary-btn" onClick={addReview}>Add Review</button>
 
       <label>Rating<input type="number" value={form.rating} readOnly /></label>
       <small>Readonly rating from platform.</small>

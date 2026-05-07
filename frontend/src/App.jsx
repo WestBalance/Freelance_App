@@ -50,6 +50,7 @@ export default function App() {
           <Route path="/create" element={<CreateOrderPage user={user} />} />
           <Route path="/orders/:id" element={<OrderDetailsPage user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} />} />
+          <Route path="/profiles/:userId" element={<ProfilePage user={user} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

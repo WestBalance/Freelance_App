@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 
 export default function OrderCard({ order, user }) {
-  const canApply = user?.role === 'FREELANCER'
   const canClone = user?.role === 'CLIENT' && user?.id === order.clientId
 
   return (
@@ -16,10 +15,10 @@ export default function OrderCard({ order, user }) {
         <span>Deadline: {order.deadline}</span>
         <span>Minimum rating: {order.minRating}</span>
         <span>Status: {order.status}</span>
+        <span>Client: {order.clientName} ({order.clientEmail})</span>
       </div>
       <div className="order-actions">
         <Link className="secondary-btn" to={`/orders/${order.id}`}>View</Link>
-        {canApply && <Link className="primary-btn" to={`/orders/${order.id}`}>Apply</Link>}
         {canClone && <Link className="secondary-btn" to={`/create?cloneFrom=${order.id}`}>Clone</Link>}
       </div>
     </article>

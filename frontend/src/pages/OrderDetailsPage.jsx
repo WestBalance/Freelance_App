@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useParams } from 'react-router-dom'
-import { completeOrder, getOrderById } from '../services/orderService'
+import { completeOrder, getOrderById, updateOrderBudget } from '../services/orderService'
 import { acceptProposal, createProposal, getProposalsByOrder } from '../services/proposalService'
-import { createCheckoutSession } from '../services/paymentService'
+import { createCheckoutSession, payOrder } from '../services/paymentService'
 
 export default function OrderDetailsPage({ user }) {
   const { id } = useParams()
@@ -11,11 +12,16 @@ export default function OrderDetailsPage({ user }) {
   const [price, setPrice] = useState('')
   const [message, setMessage] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [isEditingBudget, setIsEditingBudget] = useState(false)
+  const [budgetDraft, setBudgetDraft] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
+  const [directPaymentLoading, setDirectPaymentLoading] = useState(false)
 
   const load = async () => {
     const [orderData, proposalData] = await Promise.all([getOrderById(id), getProposalsByOrder(id)])
     setOrder(orderData)
+    setBudgetDraft(orderData?.budget ?? '')
     setProposals(proposalData)
   }
 
@@ -58,6 +64,7 @@ export default function OrderDetailsPage({ user }) {
 
   const onPay = async () => {
     setPaymentLoading(true)
+    setSuccessMessage('')
     try {
       const successUrl = `${window.location.origin}/orders/${order.id}?payment=success`
       const cancelUrl = `${window.location.origin}/orders/${order.id}?payment=cancelled`
@@ -81,6 +88,33 @@ export default function OrderDetailsPage({ user }) {
     }
   }
 
+  const onDirectPay = async () => {
+    setDirectPaymentLoading(true)
+    setSuccessMessage('')
+    try {
+      await payOrder(order.id)
+      setSuccessMessage('Direct payment completed successfully.')
+      setStatusMessage('')
+      await load()
+    } catch (error) {
+      setStatusMessage(`Direct payment failed: ${error?.message ?? 'unknown error'}`)
+    } finally {
+      setDirectPaymentLoading(false)
+    }
+  }
+
+  const onBudgetSave = async () => {
+    try {
+      await updateOrderBudget(order.id, Number(budgetDraft))
+      setSuccessMessage('Order price updated.')
+      setStatusMessage('')
+      setIsEditingBudget(false)
+      await load()
+    } catch (error) {
+      setStatusMessage(`Budget update failed: ${error?.message ?? 'unknown error'}`)
+    }
+  }
+
   return (
     <section className="panel page-stack">
       <div>
@@ -88,9 +122,23 @@ export default function OrderDetailsPage({ user }) {
         <p>{order.description}</p>
         <p><strong>Category:</strong> {order.category}</p>
         <p><strong>Budget:</strong> ${order.budget}</p>
+        {isOrderOwner && order.status === 'IN_PROGRESS' && (
+          <div className="actions-row">
+            {!isEditingBudget ? (
+              <button className="secondary-btn" onClick={() => setIsEditingBudget(true)}>Edit agreed price</button>
+            ) : (
+              <>
+                <input type="number" min="1" value={budgetDraft} onChange={e => setBudgetDraft(e.target.value)} />
+                <button className="secondary-btn" onClick={onBudgetSave}>Save price</button>
+                <button className="ghost-btn" onClick={() => setIsEditingBudget(false)}>Cancel</button>
+              </>
+            )}
+          </div>
+        )}
         <p><strong>Deadline:</strong> {order.deadline}</p>
         <p><strong>Minimum rating:</strong> {order.minRating}</p>
         <p><strong>Status:</strong> {order.status}</p>
+        <p><strong>Client:</strong> {order.clientName} ({order.clientEmail})</p>
       </div>
 
       {canApply && (
@@ -108,7 +156,7 @@ export default function OrderDetailsPage({ user }) {
           {!proposals.length && <p>No proposals yet.</p>}
           {proposals.map(proposal => (
             <article key={proposal.id} className="freelancer-card">
-              <p><strong>Freelancer #{proposal.freelancerId}</strong></p>
+              <p><strong>Freelancer:</strong> <Link to={`/profiles/${proposal.freelancerId}`}>{proposal.freelancerName} ({proposal.freelancerEmail})</Link></p>
               <p>Price: ${proposal.price}</p>
               <p>Status: {proposal.status}</p>
               <p>{proposal.message}</p>
@@ -126,13 +174,17 @@ export default function OrderDetailsPage({ user }) {
               <button className="primary-btn" onClick={onPay} disabled={paymentLoading}>
                 {paymentLoading ? 'Redirecting to Stripe...' : 'Pay with Stripe Checkout'}
               </button>
+              <button className="secondary-btn" onClick={onDirectPay} disabled={directPaymentLoading}>
+                {directPaymentLoading ? 'Paying...' : 'Direct pay (demo)'}
+              </button>
               <button className="ghost-btn" onClick={onComplete}>Mark completed</button>
             </div>
           )}
         </section>
       )}
 
-      {statusMessage && <p>{statusMessage}</p>}
+      {successMessage && <p className="success-text">{successMessage}</p>}
+      {statusMessage && <p className="error-text">{statusMessage}</p>}
     </section>
   )
 }

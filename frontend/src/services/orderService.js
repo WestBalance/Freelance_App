@@ -31,3 +31,10 @@ export function createOrder(payload) {
 export function completeOrder(orderId) {
   return request(`/orders/${orderId}/complete`, { method: 'POST' })
 }
+
+export function updateOrderBudget(orderId, budget) {
+  return request(`/orders/${orderId}/budget`, {
+    method: 'PATCH',
+    body: JSON.stringify({ budget })
+  })
+}

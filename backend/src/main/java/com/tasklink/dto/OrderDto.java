@@ -19,5 +19,7 @@ public record OrderDto(
         boolean urgent,
         boolean featured,
         Integer priorityScore,
-        Long clientId
+        Long clientId,
+        String clientName,
+        String clientEmail
 ) {}

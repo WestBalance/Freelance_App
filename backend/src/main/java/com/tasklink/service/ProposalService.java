@@ -104,6 +104,7 @@ public class ProposalService {
         proposalRepo.saveAll(orderProposals);
 
         OrderStatus previous = order.getStatus();
+        order.setBudget(proposal.getPrice());
         order.setStatus(OrderStatus.IN_PROGRESS);
         orderRepo.save(order);
         orderSubject.notifyObservers(new OrderEvent(order.getId(), "PROPOSAL_ACCEPTED", previous, order.getStatus(), Instant.now()));

@@ -9,6 +9,8 @@ public record ProposalDto(
         Long id,
         Long orderId,
         Long freelancerId,
+        String freelancerName,
+        String freelancerEmail,
         BigDecimal price,
         String message,
         ProposalStatus status,

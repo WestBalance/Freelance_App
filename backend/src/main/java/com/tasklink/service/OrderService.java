@@ -6,12 +6,12 @@ import com.tasklink.model.*;
 import com.tasklink.patterns.behavioral.*;
 import com.tasklink.patterns.creational.*;
 import com.tasklink.patterns.creational.singleton.PlatformRuntimeManager;
-import com.tasklink.patterns.structural.*;
 import com.tasklink.repository.TaskOrderRepository;
 import com.tasklink.repository.UserAccountRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -35,26 +35,14 @@ public class OrderService {
         OrderFactoryMethod creator = OrderCreatorResolver.resolve(request.category());
         TaskOrder order = creator.anOperation(request, client);
 
-        PromotionPolicyImplementor promotionPolicy = switch (request.category()) {
-            case DESIGN, MARKETING, VIDEO_PRODUCTION -> new CreativePromotionPolicy();
-            default -> new StandardPromotionPolicy();
-        };
-
-        OrderBudgetBridge budgetBridge = request.pricingMode() == PricingMode.HOURLY
-                ? new HourlyOrderBudgetBridge(promotionPolicy)
-                : new FixedOrderBudgetBridge(promotionPolicy);
-
-        order.setBudget(budgetBridge.calculate(order));
-        order.setPriorityScore(order.getPriorityScore() + budgetBridge.priorityBoost(order));
-
         TaskOrder saved = orderRepo.save(order);
         emitOrderEvent(saved.getId(), "ORDER_CREATED", null, saved.getStatus());
         return saved;
     }
 
-    public List<TaskOrder> list() { return orderRepo.findAll(); }
+    public List<TaskOrder> list() { return orderRepo.findAllWithClient(); }
 
-    public TaskOrder get(Long id) { return orderRepo.findById(id).orElseThrow(); }
+    public TaskOrder get(Long id) { return orderRepo.findByIdWithClient(id).orElseThrow(); }
 
     public OrderCloneDraftDto cloneOrderDraft(Long id) {
         TaskOrder source = get(id);
@@ -94,6 +82,18 @@ public class OrderService {
         TaskOrder saved = orderRepo.save(order);
         emitOrderEvent(saved.getId(), "ORDER_COMPLETED", previousStatus, saved.getStatus());
         return saved;
+    }
+
+    public TaskOrder updateBudget(Long id, Long clientId, BigDecimal budget) {
+        TaskOrder order = get(id);
+        if (!order.getClient().getId().equals(clientId)) {
+            throw new IllegalArgumentException("Only order owner can change budget");
+        }
+        if (order.getStatus() != OrderStatus.IN_PROGRESS) {
+            throw new IllegalArgumentException("Budget can be changed only for in-progress order");
+        }
+        order.setBudget(budget);
+        return orderRepo.save(order);
     }
 
     public List<TaskOrder> listByClient(Long clientId) {

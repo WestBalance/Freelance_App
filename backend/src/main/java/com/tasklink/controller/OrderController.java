@@ -3,6 +3,7 @@ package com.tasklink.controller;
 import com.tasklink.dto.CreateOrderRequest;
 import com.tasklink.dto.OrderCloneDraftDto;
 import com.tasklink.dto.OrderDto;
+import com.tasklink.dto.UpdateOrderBudgetRequest;
 import com.tasklink.model.UserAccount;
 import com.tasklink.patterns.behavioral.*;
 import com.tasklink.repository.UserAccountRepository;
@@ -105,5 +106,12 @@ public class OrderController {
     public OrderDto complete(@PathVariable Long id, Authentication authentication) {
         UserAccount user = userRepository.findByEmail(authentication.getName()).orElseThrow();
         return Mapper.toDto(orderService.complete(id, user.getId()));
+    }
+
+    @PatchMapping("/{id}/budget")
+    public OrderDto updateBudget(@PathVariable Long id, @Valid @RequestBody UpdateOrderBudgetRequest request, Authentication authentication) {
+        UserAccount user = userRepository.findByEmail(authentication.getName()).orElseThrow();
+        orderService.updateBudget(id, user.getId(), request.budget());
+        return Mapper.toDto(orderService.get(id));
     }
 }

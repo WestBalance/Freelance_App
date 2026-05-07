@@ -73,6 +73,8 @@ public class ClientProfileService {
                         proposal.getId(),
                         proposal.getOrder().getId(),
                         proposal.getFreelancer().getId(),
+                        resolveName(proposal),
+                        proposal.getFreelancer().getEmail(),
                         proposal.getPrice(),
                         proposal.getMessage(),
                         proposal.getStatus(),
@@ -80,5 +82,15 @@ public class ClientProfileService {
                         abilitiesByProposalId.getOrDefault(proposal.getId(), List.of())
                 ))
                 .collect(Collectors.groupingBy(ProposalDto::orderId));
+    }
+
+    private String resolveName(Proposal proposal) {
+        String name = proposal.getFreelancer().getName();
+        if (name != null && !name.isBlank()) {
+            return name;
+        }
+        String email = proposal.getFreelancer().getEmail();
+        int atPos = email.indexOf('@');
+        return atPos > 0 ? email.substring(0, atPos) : email;
     }
 }

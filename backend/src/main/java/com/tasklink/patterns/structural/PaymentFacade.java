@@ -19,7 +19,8 @@ public class PaymentFacade {
 
     public String pay(TaskOrder order, Long payerId, BigDecimal amount) {
         validationSubsystem.validatePayable(order, payerId);
-        String description = receiptSubsystem.buildDescription(order);
+        PaymentDescriptionBridge descriptionBridge = new InstantChargeDescriptionBridge(new DefaultPaymentDescriptionImplementor());
+        String description = receiptSubsystem.buildDescription(order, payerId, descriptionBridge);
         return transactionSubsystem.performCharge(amount, order.getCurrency(), description);
     }
 }

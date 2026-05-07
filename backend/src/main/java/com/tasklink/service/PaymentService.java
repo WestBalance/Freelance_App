@@ -6,7 +6,10 @@ import com.tasklink.patterns.behavioral.FixedPricingStrategy;
 import com.tasklink.patterns.behavioral.HourlyPricingStrategy;
 import com.tasklink.patterns.behavioral.PricingStrategy;
 import com.tasklink.patterns.creational.singleton.PlatformRuntimeManager;
+import com.tasklink.patterns.structural.CheckoutDescriptionBridge;
+import com.tasklink.patterns.structural.DefaultPaymentDescriptionImplementor;
 import com.tasklink.patterns.structural.PaymentFacade;
+import com.tasklink.patterns.structural.PaymentDescriptionBridge;
 import com.tasklink.patterns.structural.StripeAdapter;
 import org.springframework.stereotype.Service;
 
@@ -47,10 +50,11 @@ public class PaymentService {
         }
 
         BigDecimal payableAmount = resolvePricingStrategy(order.getPricingMode()).calculate(order);
+        PaymentDescriptionBridge descriptionBridge = new CheckoutDescriptionBridge(new DefaultPaymentDescriptionImplementor());
         return stripeAdapter.createCheckoutSession(
                 payableAmount,
                 order.getCurrency(),
-                "Payment for order #" + order.getId() + " by client #" + payerId,
+                descriptionBridge.build(order, payerId),
                 successUrl,
                 cancelUrl
         );
